@@ -22,6 +22,11 @@ class model extends CI_Model
 		$this->db->update($table,$data);
 		return true;
 	}
+	public function update_batch($table,$primary_key,$data)
+	{
+		$this->db->update_batch($table, $data, $primary_key);
+		return true;
+	}
 	public function delete($table,$where)
 	{
 		$this->db->where($where);

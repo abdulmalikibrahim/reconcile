@@ -1,0 +1,2 @@
+<div class="fw-bold text-light" style="position: absolute; bottom: 10px; left: 10px; font-size:9pt;">Created By : Abdul Malik Ibrahim (System Improvement)</div>
+<div class="fw-bold text-light" style="position: absolute; bottom: 10px; right: 10px; font-size:9pt;">PT. Astra Daihatsu Motor - KAP</div>

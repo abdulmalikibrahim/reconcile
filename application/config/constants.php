@@ -84,3 +84,29 @@ defined('EXIT_DATABASE')       OR define('EXIT_DATABASE', 8); // database error
 defined('EXIT__AUTO_MIN')      OR define('EXIT__AUTO_MIN', 9); // lowest automatically-assigned error code
 defined('EXIT__AUTO_MAX')      OR define('EXIT__AUTO_MAX', 125); // highest automatically-assigned error code
 define('SITE_NAME', 'Monren');
+define('URL_GET_DATA','http://10.59.114.111:8080/stoweb/index.php/entrylist/dataFinal');
+// define('URL_LOGIN_GET_DATA','http://10.59.114.111:8080/stoweb/index.php/login/verify');
+define('URL_LOGIN_GET_DATA','http://10.59.194.102:5000/get-cookie');
+define('LIST_SHOP',
+	[
+		'ASY1' => 'Assy 1',
+		'ASY2' => 'Assy 2',
+		'BDY1' => 'Body 1',
+		'BDY2' => 'Body 2',
+		'INSP' => 'Inspection',
+		'LAPD' => 'LAPD',
+		'LOG-ASY1' => 'Logistic Assy 1',
+		'LOG-ASY2' => 'Logistic Assy 2',
+		'LOG-BDY1' => 'Logistic Body 1',
+		'LOG-BDY2' => 'Logistic Body 2',
+		'LOG-CKD' => 'Logistic CKD',
+		'LOG-CONS' => 'Logistic Consumable',
+		'MNT' => 'Maintenance',
+		'PCD' => 'PCD',
+		'PNT1' => 'Painting 1',
+		'PNT2' => 'Painting 2',
+		'PRS' => 'Press',
+		'RND' => 'R&D',
+		'VLC' => 'VLC',
+	]
+);

@@ -49,17 +49,21 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | Examples:	my-controller/index	-> my_controller/index
 |		my-controller/my-method	-> my_controller/my_method
 */
-$route['default_controller'] = 'API';
+$route['default_controller'] = 'App';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
-$route['dataCapex'] = 'API/dataCapex';
-$route['getDataTable'] = 'API/getDataTable';
-$route['updateCapex'] = 'API/prosesCapex/update';
-$route['addCapex'] = 'API/prosesCapex/add';
-$route['deleteCapex'] = 'API/deleteCapex';
-$route['getDataCapexAdd'] = 'API/getDataCapexAdd';
-$route['saveDataActivity'] = 'API/saveDataActivity';
-$route['getDataReporting'] = 'API/getDataReporting';
-$route['getShop'] = 'API/getShop';
-$route['getSummaryReport'] = 'API/getSummaryReport';
-$route['uploadData'] = 'API/uploadData';
+$route['upload_mb52'] = 'API/upload_mb52';
+$route['upload_juklak'] = 'API/upload_juklak';
+$route['upload_wip'] = 'API/upload_wip';
+$route['fetch_data'] = 'API/fetch_data';
+$route['load_data'] = 'API/load_data';
+$route['load_data_wip'] = 'API/load_data_wip';
+$route['load_data_actual'] = 'API/load_data_actual';
+$route['load_data_mb52'] = 'API/load_data_mb52';
+$route['load_data_mastersloc'] = 'API/load_data_mastersloc';
+$route['load_data_juklak'] = 'API/load_data_juklak';
+$route['load_data_sloc'] = 'API/load_data_sloc';
+$route['update_sloc'] = 'API/update_sloc';
+$route['delete_sloc'] = 'API/delete_sloc';
+$route['remote_login'] = 'API/remote_login';
+$route['check_remote'] = 'API/check_remote';

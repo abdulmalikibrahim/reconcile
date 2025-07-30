@@ -3,608 +3,14 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 require_once FCPATH . 'vendor/autoload.php';
 class API extends MY_Controller {
-    function dataCapex()
+
+    public function upload_mb52()
     {
-        $this->form_validation->set_rules('shop', 'Shop', 'trim|required');
-        if ($this->form_validation->run() === FALSE) {
-            $fb = ["statusCode" => 500, "res" => validation_errors()];
-            $this->fb($fb);
-        }
-        $shop = $this->input->post("shop");
-
-        $dataPlan = [];
-        $plan = $this->getDataCapex("plan",$shop);
-        foreach ($plan as $plan) {
-            $dataPlan[] = floatval(round($plan->Budget,3));
-        }
-
-        $dataActual = [];
-        $actual = $this->getDataCapex("actual",$shop);
-        foreach ($actual as $actual) {
-            $dataActual[] = floatval(round($actual->Actual,3));
-        }
-
-        $dataBFOS = [];
-        $bfos = $this->getDataCapex("bfos",$shop);
-        foreach ($bfos as $bfos) {
-            $dataBFOS[] = floatval(round($bfos->Nominal_BFOS,3));
-        }
-
-        $dataBTOS = [];
-        $btos = $this->getDataCapex("btos",$shop);
-        foreach ($btos as $btos) {
-            $dataBTOS[] = floatval(round($btos->Nominal_BTOS,3));
-        }
-
-        $fb = ["statusCode" => 200, "res" => ["plan" => $dataPlan, "actual" => $dataActual, "bfos" => $dataBFOS, "btos" => $dataBTOS]];
-        $this->fb($fb);
-    }
-
-    private function getDataCapex($tipe,$shop)
-    {
-        if($tipe == "plan"){
-            $columnValue = "Budget";
-            $columnMonth = "Month_Plan";
-        }else if($tipe == "actual"){
-            $columnValue = "Actual";
-            $columnMonth = "Month";
-        }else if($tipe == "bfos"){
-            $columnValue = "Nominal_BFOS";
-            $columnMonth = "Month_BFOS";
-        }else if($tipe == "btos"){
-            $columnValue = "Nominal_BTOS";
-            $columnMonth = "Month_BTOS";
-        }
-
-        $query = "
-        WITH months AS (
-            SELECT 1 AS $columnMonth UNION ALL
-            SELECT 2 UNION ALL
-            SELECT 3 UNION ALL
-            SELECT 4 UNION ALL
-            SELECT 5 UNION ALL
-            SELECT 6 UNION ALL
-            SELECT 7 UNION ALL
-            SELECT 8 UNION ALL
-            SELECT 9 UNION ALL
-            SELECT 10 UNION ALL
-            SELECT 11 UNION ALL
-            SELECT 12
-        )
-        SELECT 
-            m.$columnMonth, 
-            COALESCE(SUM(d.$columnValue), 0) AS $columnValue
-        FROM 
-            months m
-        LEFT JOIN `datacapex` d 
-            ON m.$columnMonth = d.$columnMonth AND d.shop = '".$shop."'
-        GROUP BY m.$columnMonth
-        ORDER BY FIELD(m.$columnMonth, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3);
-        ";
-        $data = $this->model->query_exec($query,"result");
-        return $data;
-    }
-
-    function getDataTable()
-    {
-        $this->form_validation->set_rules('shop', 'Shop', 'trim|required');
-        $this->form_validation->set_rules('tipe', 'Tipe', 'trim|required');
-        if ($this->form_validation->run() === FALSE) {
-            $fb = ["statusCode" => 500, "res" => validation_errors()];
-            $this->fb($fb);
-        }
-
-        $shop = $this->input->post("shop");
-        $tipe = $this->input->post("tipe");
-        if($tipe == "plan"){
-            $returnData = $this->model->gd("datacapex","Id,Category,Invest,Month_Plan as Month,Budget","shop = '$shop' AND Budget != ''","result");
-        }else if($tipe == "actual"){
-            $returnData = $this->model->gd("datacapex","Id,Category,Invest,Month_Plan as Month,Actual as Budget","shop = '$shop' AND Actual != '' AND BTOS = ''","result");
-        }else if($tipe == "bfos"){
-            $returnData = $this->model->gd("datacapex","Id,Category,Invest,BFOS as OtherShop,Month_BFOS as Month,Nominal_BFOS as Budget","shop = '$shop' AND BFOS != ''","result");
-        }else if($tipe == "btos"){
-            $returnData = $this->model->gd("datacapex","Id,Category,Invest,BTOS as OtherShop,Month_BTOS as Month,Nominal_BTOS as Budget","shop = '$shop' AND BTOS != ''","result");
-        }
-        $fb = ["statusCode" => 200, "res" => $returnData];
-        $this->fb($fb);
-    }
-
-    private function checkInputCapex()
-    {
-        $tipe = $this->input->post("tipe");
-        $this->form_validation
-            ->set_rules('id',"ID","trim|required")
-            ->set_rules('category',"Category","trim|required")
-            ->set_rules('invest',"Invest","trim|required")
-            ->set_rules('month',"Month","trim|required") 
-            ->set_rules('budget',"Budget","trim|required")
-            ->set_rules('tipe',"Tipe","trim|required")
-            ->set_rules('shop',"Shop","trim|required");
-        if($tipe == "bfos" || $tipe == "btos"){
-            $this->form_validation->set_rules('otherShop',"Other Shop","trim");
-        }
-        
-        if ($this->form_validation->run() === FALSE) {
-            $fb = ["statusCode" => 500, "res" => validation_errors()];
-            $this->fb($fb);
-        }
-    }
-
-    function prosesCapex($method) //METHOD ADD OR UPDATE
-    {
-        $this->checkInputCapex();
-
-        $id = $this->input->post("id");
-        $category = $this->input->post("category");
-        $invest = $this->input->post("invest");
-        $month = $this->input->post("month");
-        $otherShop = $this->input->post("otherShop");
-        $budget = str_replace(",",".",$this->input->post("budget"));
-        $shop = $this->input->post("shop");
-        $tipe = $this->input->post("tipe");
-
-        $input = [
-            "Category" => $category,
-            "Invest" => $invest,
-            "shop" => $shop,
-        ];
-        if($tipe == "plan"){
-            $input["Month_Plan"] = $month;
-            $input["Budget"] = $budget;
-        }else if($tipe == "actual"){
-            $input["Month"] = $month;
-            $input["Actual"] = $budget;
-        }else if($tipe == "bfos"){
-            $input["BFOS"] = $otherShop;
-            $input["Month_BFOS"] = $month;
-            $input["Nominal_BFOS"] = $budget;
-        }else if($tipe == "btos"){
-            $input["BTOS"] = $otherShop;
-            $input["Month_BTOS"] = $month;
-            $input["Nominal_BTOS"] = $budget;
-        }
-
-        if($method == "update"){
-            $proses = $this->model->update("datacapex","Id = '$id'",$input);
-        }else if($method == "add"){
-            $proses = $this->model->insert("datacapex",$input);
-        }
-        if($proses){
-            $fb = ["statusCode" => 200, "res" => "Data berhasil di update"];
-        }else{
-            $fb = ["statusCode" => 500, "res" => "Data gagal di update"];
-        }
-        $this->fb($fb);
-    }
-
-    function deleteCapex()
-    {
-        $this->form_validation->set_rules('id',"ID","trim|required");
-        if ($this->form_validation->run() === FALSE) {
-            $fb = ["statusCode" => 500, "res" => validation_errors()];
-            $this->fb($fb);
-        }
-
-        $id = $this->input->post("id");
-        $delete = $this->model->delete("datacapex","id = '$id'");
-        if($delete){
-            $fb = ["statusCode" => 200, "res" => "Data berhasil di hapus"];
-        }else{
-            $fb = ["statusCode" => 500, "res" => "Data gagal di hapus"];
-        }
-        $this->fb($fb);
-    }
-
-    function getDataCapexAdd()
-    {
-        $shop = $this->input->post("shop");
-        $month_3 = $this->input->post("month_3");
-        $month = $month_3;
-        if($month_3 == "01") {
-            $month = 13;
-        }else if($month_3 == "02") {
-            $month = 14;
-        }else if($month_3 == "03") {
-            $month = 15;
-        }
-        $dataInvest = ["Improvement","Replacement"];
-
-        $newDataCallBack["Improvement"] = [];
-        $newDataCallBack["Replacement"] = [];
-        foreach ($dataInvest as $key => $value) {
-            $getData = $this->model->gd("datacapex","*","shop = '$shop' AND Budget != '' AND Invest = '$value' AND Month_Plan <= $month","result");
-            foreach ($getData as $row) {
-                $actual = $this->model->gd("datacapex","SUM(Actual) as total","shop = '$shop' AND (activity_BTOS = '".$row->Id."' OR activity_BFOS = '".$row->Id."')","row");
-                $bfosSelf = $this->model->gd("datacapex","SUM(Nominal_BFOS) as total","BFOS = '$shop' AND activity_BFOS = '".$row->Id."'","row");
-                $ActualBudget = !empty($row->Actual) ? $row->Actual : 0;
-                $ActualBFOSorBTOS = $actual->total + $bfosSelf->total;
-                $mPlan = $row->Month_Plan+3;
-                $date = "2020-".$mPlan."-01";
-                $budget = $row->Budget - $ActualBudget - $ActualBFOSorBTOS;
-                $prevUsage = $ActualBudget + $ActualBFOSorBTOS;
-                $MonthPlan = date("M",strtotime($date));
-                $full = $budget <= 0 ? "full" : "";
-                $class = $budget <= 0 ? "bg-secondary text-light" : "";
-                $newDataCallBack[$value][] = [
-                    "id" => $row->Id,
-                    "category" => $row->Category,
-                    "planBudget" => $row->Budget,
-                    "prevUsage" => round($prevUsage,3),
-                    "budget" => round($budget,3),
-                    "monthPlan" => $MonthPlan,
-                    "full" => $full,
-                    "class" => $class
-                ];
-            }
-        }
-        $fb = ["statusCode" => 200, "res" => $newDataCallBack];
-        $this->fb($fb);
-    }
-
-    function saveDataActivity()
-    {
-        // Ambil raw JSON dari body request
-        $jsonData = file_get_contents("php://input");
-
-        // Ubah JSON menjadi array asosiatif
-        $data = json_decode($jsonData, true);
-
-        // Cek apakah JSON valid
-        if (!is_array($data)) {
-            $fb = ["statusCode" => 500, "res" => "Invalid request JSON"];
-            $this->fb($fb);
-        }
-
-        $monthActual = (date("m")*1);
-        $ia = $data["ia"] ?? null;
-        if(empty($ia)){
-            $fb = ["statusCode" => 500, "res" => "IA tidak boleh kosong"];
-            $this->fb($fb);
-        }
-        $shop = $data["shop"] ?? null;
-        $investment = $data["investment"] ?? null;
-        $description = $data["description"] ?? null;
-        $useBudget = isset($data["useBudget"]) ? json_decode($data["useBudget"], true) : [];
-        $useBudgetOther = isset($data["useBudgetOther"]) ? json_decode($data["useBudgetOther"], true) : [];
-
-        $getIANumber = $this->model->gd("datacapex","Id","No_IA = '$ia' AND shop = '$shop'","row");
-        $getCategory = $this->model->gd("datacapex","Id,Category,shop","Category = '$description' AND shop = '$shop'","row");
-        if(!empty($useBudget) && is_array($useBudget)){
-            foreach ($useBudget as $key => $value) {
-                if($getCategory->Id == $key){
-                    //UPDATE ACTUAL
-                    $submitActual = [
-                        "Actual" => $value,
-                        "Month" => $monthActual,
-                        "No_IA" => $ia,
-                    ];
-                    $proses = $this->model->update("datacapex","id = '$key'",$submitActual);
-                    if(!$proses){
-                        $fb = ["statusCode" => 500, "res" => "Gagal update data actual"];
-                        $this->fb($fb);
-                    }
-                }else{
-                    //UPDATE BFOS
-                    $datasubmit = [
-                        "Category" => $description,
-                        "Invest" => $investment,
-                        "BFOS" => $shop,
-                        "activity_BFOS" => $key,
-                        "Nominal_BFOS" => $value,
-                        "Month_BFOS" => $monthActual,
-                        "No_IA" => $ia,
-                        "shop" => $shop
-                    ];
-                    if(!empty($getIANumber->Id)){
-                        //GET DATA ID BY ACTIVITY BFOS
-                        $idBFOS = $this->model->gd("datacapex","Id","activity_BFOS = '$key' AND shop = '$shop' AND No_IA = '$ia'","row");
-                        $proses = $this->model->update("datacapex","Id = '$idBFOS->Id'",$datasubmit);
-                    }else{
-                        $proses = $this->model->insert("datacapex",$datasubmit);
-                    }
-                    if(!$proses){
-                        $fb = ["statusCode" => 500, "res" => "Gagal input data BFOS"];
-                        $this->fb($fb);
-                    }
-                }
-            }
-        }
-
-        if(!empty($useBudgetOther) && is_array($useBudgetOther)){
-            foreach ($useBudgetOther as $key => $value) {
-                $getDetail = $this->model->gd("datacapex","id,shop","id = '$key'","row");
-                //INPUT BTOS
-                $dataSubmitBTOS = [
-                    "Category" => $description,
-                    "Invest" => $investment,
-                    "BTOS" => $shop,
-                    "Actual" => $value,
-                    "Nominal_BTOS" => $value,
-                    "activity_BTOS" => $key,
-                    "Month_BTOS" => $monthActual,
-                    "No_IA" => $ia,
-                    "shop" => $getDetail->shop,
-                ];
-                
-                //INPUT BFOS
-                $dataSubmitBFOS = [
-                    "Category" => $description,
-                    "Invest" => $investment,
-                    "BFOS" => $getDetail->shop,
-                    "Nominal_BFOS" => $value,
-                    "activity_BFOS" => $key,
-                    "Month_BFOS" => $monthActual,
-                    "No_IA" => $ia,
-                    "shop" => $shop,
-                ];
-                
-                if(!empty($getIANumber->Id)){
-                    //GET DATA ID BY ACTIVITY BTOS
-                    $idBTOS = $this->model->gd("datacapex","Id","activity_BTOS = '$key' AND shop = '$getDetail->shop' AND No_IA = '$ia'","row");
-                    $proses = $this->model->update("datacapex","Id = '$idBTOS->Id'",$dataSubmitBTOS);
-                    //GET DATA ID BY ACTIVITY BFOS
-                    $idBFOS = $this->model->gd("datacapex","Id","activity_BFOS = '$key' AND shop = '$shop' AND No_IA = '$ia'","row");
-                    $proses = $this->model->update("datacapex","Id = '$idBFOS->Id'",$dataSubmitBFOS);
-                }else{
-                    $proses = $this->model->insert("datacapex",$dataSubmitBFOS);
-                    $proses = $this->model->insert("datacapex",$dataSubmitBTOS);
-                }
-                if(!$proses){
-                    $fb = ["statusCode" => 500, "res" => "Gagal input data BTOS"];
-                    $this->fb($fb);
-                }
-            }
-        }
-
-        $fb = ["statusCode" => 200, "res" => "Data berhasil diupdate"];
-        $this->fb($fb);
-    }
-
-    function getShop($return = false)
-    {
-        $shop = $this->model->gd("shop","shop,plant","id !=","result");
-        $fb = ["statusCode" => 200, "res" => $shop];
-        if($return){
-            return $fb; 
-        }else{
-            $this->fb($fb); 
-        }
-    }
-
-    private function formatingNumber($number)
-    {
-        $format = str_replace(",00","",number_format(round($number,3),3,",","."));
-        return $format;
-    }
-
-    function getDataReporting()
-    {
-        $getShop = $this->getShop(true);
-        $dataShop = $getShop["res"];
-        $invest = ["Improvement","Replacement"];
-        $dataResult = [];
-        $dataResultSummary = [];
-        $summaryTotal = [];
-
-        foreach ($invest as $kInvest => $vInvest) {
-            $grandTotalPlan = 0;
-            $grandTotalUsage = 0;
-            $grandTotalRemain = 0;
-            for ($i=1; $i <= 12; $i++) { 
-                $grandTotalMonth = 0;
-                $totalMonth = $this->model->gd(
-                    "datacapex",
-                    "SUM(COALESCE(Actual, 0) + COALESCE(Nominal_BFOS, 0)) as total",
-                    "Invest = '$vInvest' AND (Month = '$i' OR Month_BFOS = '$i')",
-                    "row"
-                );
-                $totalPerMonth = isset($totalMonth->total) ? $totalMonth->total : 0;
-                $grandTotalMonth += $totalPerMonth;
-                $dataResultSummary[$vInvest]["gtm"][$i] = $this->formatingNumber($grandTotalMonth);
-                $summaryTotal[$vInvest]["gtm"][$i] = $grandTotalMonth;
-            }
-
-            foreach ($dataShop as $key => $value) {
-                $shop = $value->shop;
-                //CARI UNTUK ROWSPAN TABLE SHOP TITLE
-                $countData = $this->model->gd("datacapex","COUNT(id) as rowData","shop = '$shop' AND Invest = '$vInvest' AND (Actual != '' OR BFOS != '')","row");
-                $rowSpan = ($countData->rowData + 1); //+3 UNTUK COVER ROW YANG LAIN
-                $totalPlan = $this->model->gd("datacapex","SUM(Budget) as total","shop = '$shop' AND Invest = '$vInvest'","row");
-                $totalUsage = $this->model->gd(
-                    "datacapex",
-                    "SUM(COALESCE(Actual, 0) + COALESCE(Nominal_BFOS, 0)) as total",
-                    "shop = '$shop' AND Invest = '$vInvest' AND (Month != '' OR Month_BFOS != '')",
-                    "row"
-                );
-                $totalUsage = $totalUsage->total;
-    
-                $dataSummaryMonth = [];
-                for ($i=1; $i <= 12; $i++) { 
-                    $totalMonth = $this->model->gd(
-                        "datacapex",
-                        "SUM(COALESCE(Actual, 0) + COALESCE(Nominal_BFOS, 0)) as total",
-                        "shop = '$shop' AND Invest = '$vInvest' AND (Month = '$i' OR Month_BFOS = '$i')",
-                        "row"
-                    );
-                    $totalPerMonth = isset($totalMonth->total) ? $totalMonth->total : 0;
-                    $dataSummaryMonth[$i] = $this->formatingNumber($totalPerMonth);
-                }
-    
-                $remainBudget = $totalPlan->total - $totalUsage;
-                $dataResult[$shop][$vInvest] = [
-                    "rowSpan" => ($rowSpan+1),
-                    "totalPlan" => $this->formatingNumber($totalPlan->total),
-                    "totalUsage" => $this->formatingNumber($totalUsage),
-                    "totalRemainBudget" => $this->formatingNumber($remainBudget),
-                    "data" => [],
-                    "dataSummaryMonth" => $dataSummaryMonth
-                ];
-
-                $grandTotalPlan += $totalPlan->total;
-                $dataResultSummary[$vInvest]["gtp"] = $this->formatingNumber($grandTotalPlan);
-                $summaryTotal[$vInvest]["gtp"] = $grandTotalPlan;
-
-                $grandTotalUsage += $totalUsage;
-                $dataResultSummary[$vInvest]["gtu"] = $this->formatingNumber($grandTotalUsage);
-                $summaryTotal[$vInvest]["gtu"] = $grandTotalUsage;
-
-                $grandTotalRemain += $remainBudget;
-                $dataResultSummary[$vInvest]["gtr"] = $this->formatingNumber($grandTotalRemain);
-                $summaryTotal[$vInvest]["gtr"] = $grandTotalRemain;
-    
-                $data = $this->model->gd("datacapex","*","shop = '$shop' AND Invest = '$vInvest' AND (Actual != '' OR BFOS != '')","result");
-                if(empty($data)){
-                    continue;
-                }
-    
-                $dataUsage = []; //MENGENOLKAN NILAI DATA USAGE
-                foreach ($data as $row) {
-                    $type = "";
-                    $usage = "";
-                    $month = "";
-                    $keterangan = "";
-                    if(!empty($row->Actual) && !empty(!empty($row->Month))){
-                        $type = "Actual";
-                        $usage = $row->Actual;
-                        $month = $row->Month;
-                    }else if(!empty($row->BFOS)){
-                        $type = "BFOS";
-                        $usage = $row->Nominal_BFOS;
-                        $month = $row->Month_BFOS;
-                        $getDataBFOS = $this->model->gd("datacapex","Category,Invest","Id = '$row->activity_BFOS'","row");
-                        $keterangan = "Budget From : ".$row->BFOS." (".$getDataBFOS->Invest." : ".$getDataBFOS->Category.")";
-                    }else if(!empty($row->BTOS)){
-                        $type = "BTOS";
-                        $usage = $row->Nominal_BTOS;
-                        $month = $row->Month_BTOS;
-                        $getDataBTOS = $this->model->gd("datacapex","Category,Invest","Id = '$row->activity_BTOS'","row");
-                        $keterangan = "Budget For : ".$row->BTOS." (".$getDataBFOS->Invest." : ".$getDataBTOS->Category.")";
-                    }
-                    $dataBFOS = $this->model->gd("datacapex","SUM(Nominal_BFOS) as total","activity_BFOS = '$row->Id'","row");
-                    $remainBudget = (empty($row->Budget) ? 0 : $row->Budget) - ((empty($row->Actual) ? 0 : $row->Actual) + (empty($dataBFOS->total) ? 0 : $dataBFOS->total));
-                    $dataUsage[] = [
-                        "type" => $type,
-                        "category" => $row->Category,
-                        "plan" => $row->Budget,
-                        "remainBudget" => $remainBudget > 0 ? $this->formatingNumber($remainBudget) : "",
-                        "month" => intval($month),
-                        "usage" => $this->formatingNumber($usage),
-                        "ia" => $row->No_IA,
-                        "keterangan" => $keterangan
-                    ];
-    
-                    $dataResult[$shop][$vInvest]["data"] = $dataUsage;
-                }
-            }
-        }
-        
-        for ($i=1; $i <= 12; $i++) { 
-            $totalgtm = $summaryTotal["Improvement"]["gtm"][$i] + $summaryTotal["Replacement"]["gtm"][$i];
-            $dataResultSummary["total"]["gtm"][$i] = $this->formatingNumber($totalgtm,2);
-        }
-        $dataResultSummary["total"]["gtp"] = $this->formatingNumber($summaryTotal["Improvement"]["gtp"] + $summaryTotal["Replacement"]["gtp"],2);
-        $dataResultSummary["total"]["gtu"] = $this->formatingNumber($summaryTotal["Improvement"]["gtu"] + $summaryTotal["Replacement"]["gtu"],2);
-        $dataResultSummary["total"]["gtr"] = $this->formatingNumber($summaryTotal["Improvement"]["gtr"] + $summaryTotal["Replacement"]["gtr"],2);
-
-        $fb = ["statusCode" => 200, "res" => $dataResult, "summary" => $dataResultSummary];
-        $this->fb($fb);
-    }
-
-    function getSummaryReport()
-    {
-        $getShop = $this->getShop(true);
-        $dataShop = $getShop["res"];
-        $invest = ["Improvement","Replacement"];
-        $result = [];
-        $resultNum = [];
-        $resultTotal = [];
-        
-        $totalPlanImprovement = 0;
-        $totalPlanReplacement = 0;
-        $totalBFOSImprovement = 0;
-        $totalBFOSReplacement = 0;
-        $totalBTOSImprovement = 0;
-        $totalBTOSReplacement = 0;
-        $totalActualImprovement = 0;
-        $totalActualReplacement = 0;
-        $totalActualxPlanImprovement = 0;
-        $totalActualxPlanReplacement = 0;
-        $totalRemainImprovement = 0;
-        $totalRemainReplacement = 0;
-        $grandTotalRemain = 0;
-        foreach ($dataShop as $key => $value) {
-            $shop = $value->shop;
-            foreach ($invest as $kinvest => $vinvest) {
-                $plan = $this->model->gd("datacapex","SUM(Budget) as total","shop = '$shop' AND Invest = '$vinvest'","row");
-                $bfos = $this->model->gd("datacapex","SUM(Nominal_BFOS) as total","shop = '$shop' AND Invest = '$vinvest' AND BFOS != '$shop'","row");
-                $btos = $this->model->gd("datacapex","SUM(Nominal_BTOS) as total","shop = '$shop' AND Invest = '$vinvest'","row");
-                $actual = $this->model->gd("datacapex","SUM(Actual + Nominal_BFOS - Nominal_BTOS) as total","shop = '$shop' AND Invest = '$vinvest'","row");
-                $actualxplan = $actual->total - $plan->total;
-                $remain = round(($plan->total + $bfos->total) - ($actual->total + $btos->total),3);
-                $result[$shop][$vinvest] = [
-                    "plan" => $this->formatingNumber($plan->total),
-                    "bfos" => $this->formatingNumber($bfos->total),
-                    "btos" => $this->formatingNumber($btos->total),
-                    "actual" => $this->formatingNumber($actual->total),
-                    "actualxplan" => $this->formatingNumber($actualxplan),
-                    "remain" => $this->formatingNumber($remain),
-                ];
-                
-                $resultNum[$shop][$vinvest] = [
-                    "plan" => $plan->total,
-                    "bfos" => $bfos->total,
-                    "btos" => $btos->total,
-                    "actual" => $actual->total,
-                    "actualxplan" => $actualxplan,
-                    "remain" => $remain
-                ];
-
-                if($vinvest == "Improvement"){
-                    $totalPlanImprovement += $plan->total;
-                    $totalBFOSImprovement += $bfos->total;
-                    $totalBTOSImprovement += $btos->total;
-                    $totalActualImprovement += $actual->total;
-                    $totalActualxPlanImprovement += $actualxplan;
-                    $totalRemainImprovement += $resultNum[$shop]["Improvement"]["remain"];
-                }else if($vinvest == "Replacement"){
-                    $totalPlanReplacement += $plan->total;
-                    $totalBFOSReplacement += $bfos->total;
-                    $totalBTOSReplacement += $btos->total;
-                    $totalActualReplacement += $actual->total;
-                    $totalActualxPlanReplacement += $actualxplan;
-                    $totalRemainReplacement += $resultNum[$shop]["Replacement"]["remain"];
-                }
-            }
-            $result[$shop]["remain_total"] = $this->formatingNumber($resultNum[$shop]["Improvement"]["remain"] + $resultNum[$shop]["Replacement"]["remain"]);
-            $grandTotalRemain += $resultNum[$shop]["Improvement"]["remain"] + $resultNum[$shop]["Replacement"]["remain"];
-        }
-        $result["GRAND TOTAL"]["Improvement"]["plan"] = $this->formatingNumber($totalPlanImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["plan"] = $this->formatingNumber($totalPlanReplacement);
-        $result["GRAND TOTAL"]["Improvement"]["bfos"] = $this->formatingNumber($totalBFOSImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["bfos"] = $this->formatingNumber($totalBFOSReplacement);
-        $result["GRAND TOTAL"]["Improvement"]["btos"] = $this->formatingNumber($totalBTOSImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["btos"] = $this->formatingNumber($totalBTOSReplacement);
-        $result["GRAND TOTAL"]["Improvement"]["actual"] = $this->formatingNumber($totalActualImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["actual"] = $this->formatingNumber($totalActualReplacement);
-        $result["GRAND TOTAL"]["Improvement"]["actualxplan"] = $this->formatingNumber($totalActualxPlanImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["actualxplan"] = $this->formatingNumber($totalActualxPlanReplacement);
-        $result["GRAND TOTAL"]["Improvement"]["remain"] = $this->formatingNumber($totalRemainImprovement);
-        $result["GRAND TOTAL"]["Replacement"]["remain"] = $this->formatingNumber($totalRemainReplacement);
-        $result["GRAND TOTAL"]["remain_total"] = $this->formatingNumber($grandTotalRemain);
-
-        $fb = ["statusCode" => 200, "res" => $result, "resTotal" => $resultTotal];
-        $this->fb($fb);
-    }
-
-    function uploadData()
-    {
-        $shop = $this->input->post("shop");
-        // Konfigurasi upload file
         $config['upload_path']   = './uploads/';
         $config['allowed_types'] = 'xls|xlsx';
 
         $this->upload->initialize($config);
-        if (!$this->upload->do_upload('upload-file')) {
+        if (!$this->upload->do_upload('upload-mb52')) {
             // Jika upload gagal, tampilkan error
             $error = $this->upload->display_errors();
             $this->fb(["statusCode" => 500, "res" => $error]);
@@ -616,104 +22,587 @@ class API extends MY_Controller {
         // Load PHPExcel
         $objPHPExcel = IOFactory::load($file_path);
 
-        $clear_data = $this->model->delete("datacapex", "shop = '$shop'");
         // Membaca sheet pertama
         $sheet = $objPHPExcel->getSheet(0);
         $highestRow = $sheet->getHighestRow();
         $highestColumn = $sheet->getHighestColumn();
 
-        $data = [];
-        for ($i=10; $i <= 29; $i++) { 
-            $category = $sheet->getCell('D'.$i)->getValue();
-            if(empty($category)){
+        $data_excel = [];
+        $this->model->delete("data_sap","id !=");
+        for ($i=2; $i <= $highestRow; $i++) { 
+            $sap_part_no = $sheet->getCell('A'.$i)->getValue();
+            if(empty($sap_part_no)){
                 continue;
             }
 
-            $budget = $sheet->getCell('G'.$i)->getCalculatedValue();
-            if(!empty($sheet->getCell('H'.$i)->getValue())){
-                $monthPlan = 4;
-            }else if(!empty($sheet->getCell('I'.$i)->getValue())){
-                $monthPlan = 5;
-            }else if(!empty($sheet->getCell('J'.$i)->getValue())){
-                $monthPlan = 6;
-            }else if(!empty($sheet->getCell('K'.$i)->getValue())){
-                $monthPlan = 7;
-            }else if(!empty($sheet->getCell('L'.$i)->getValue())){
-                $monthPlan = 8;
-            }else if(!empty($sheet->getCell('M'.$i)->getValue())){
-                $monthPlan = 9;
-            }else if(!empty($sheet->getCell('N'.$i)->getValue())){
-                $monthPlan = 10;
-            }else if(!empty($sheet->getCell('O'.$i)->getValue())){
-                $monthPlan = 11;
-            }else if(!empty($sheet->getCell('P'.$i)->getValue())){
-                $monthPlan = 12;
-            }else if(!empty($sheet->getCell('Q'.$i)->getValue())){
-                $monthPlan = 1;
-            }else if(!empty($sheet->getCell('R'.$i)->getValue())){
-                $monthPlan = 2;
-            }else if(!empty($sheet->getCell('S'.$i)->getValue())){
-                $monthPlan = 3;
-            }
+            $part_name = htmlentities($sheet->getCell('B'.$i)->getValue());
+            $plant = $sheet->getCell('C'.$i)->getValue();
+            $sloc = $sheet->getCell('D'.$i)->getValue();
+            $base_unit = $sheet->getCell('K'.$i)->getValue();
+            $sap_qty = $sheet->getCell('L'.$i)->getValue();
+            $sap_value = $sheet->getCell('N'.$i)->getValue();
+            $price = round($sap_value/$sap_qty);
 
-            $data[] = [
-                "Category" => $category,
-                "Budget" => $budget,
-                "Month_Plan" => $monthPlan,
-                "Invest" => "Improvement",
-                "shop" => $shop
+            $data_excel[] = [
+                "sap_part_no" => $sap_part_no,
+                "part_name" => $part_name,
+                "plant" => $plant,
+                "sloc" => $sloc,
+                "base_unit" => $base_unit,
+                "sap_qty" => $sap_qty,
+                "sap_value" => $sap_value,
+                "price" => $price,
             ];
         }
 
-        for ($i=34; $i <= 40; $i++) { 
-            $category = $sheet->getCell('D'.$i)->getValue();
-            if(empty($category)){
-                continue;
-            }
-
-            $budget = $sheet->getCell('G'.$i)->getCalculatedValue();
-            if(!empty($sheet->getCell('H'.$i)->getValue())){
-                $monthPlan = 4;
-            }else if(!empty($sheet->getCell('I'.$i)->getValue())){
-                $monthPlan = 5;
-            }else if(!empty($sheet->getCell('J'.$i)->getValue())){
-                $monthPlan = 6;
-            }else if(!empty($sheet->getCell('K'.$i)->getValue())){
-                $monthPlan = 7;
-            }else if(!empty($sheet->getCell('L'.$i)->getValue())){
-                $monthPlan = 8;
-            }else if(!empty($sheet->getCell('M'.$i)->getValue())){
-                $monthPlan = 9;
-            }else if(!empty($sheet->getCell('N'.$i)->getValue())){
-                $monthPlan = 10;
-            }else if(!empty($sheet->getCell('O'.$i)->getValue())){
-                $monthPlan = 11;
-            }else if(!empty($sheet->getCell('P'.$i)->getValue())){
-                $monthPlan = 12;
-            }else if(!empty($sheet->getCell('Q'.$i)->getValue())){
-                $monthPlan = 1;
-            }else if(!empty($sheet->getCell('R'.$i)->getValue())){
-                $monthPlan = 2;
-            }else if(!empty($sheet->getCell('S'.$i)->getValue())){
-                $monthPlan = 3;
-            }
-
-            $data[] = [
-                "Category" => $category,
-                "Budget" => $budget,
-                "Month_Plan" => $monthPlan,
-                "Invest" => "Replacement",
-                "shop" => $shop
-            ];
+        if(empty($data_excel)){
+            $fb = ["statusCode" => 500, "res" => "Data excel kosong"];
+            $this->fb($fb);
         }
-        
-        $insert = $this->model->insert_batch("datacapex",$data);
-        if($insert){
-            $fb = ["statusCode" => 200, "res" => "Upload success"];
-        }else{
-            $fb = ["statusCode" => 500, "res" => "Upload failed"];
-        }
+
+        $this->model->insert_batch("data_sap",$data_excel);
+
+        $fb = ["statusCode" => 200, "res" => "Upload success"];
         unlink($file_path);
         $this->fb($fb);
     }
+    
+    public function upload_juklak()
+    {
+        $clear = $this->input->post("clear");
+        $config['upload_path']   = './uploads/';
+        $config['allowed_types'] = 'xls|xlsx';
+
+        $this->upload->initialize($config);
+        if (!$this->upload->do_upload('upload-juklak')) {
+            // Jika upload gagal, tampilkan error
+            $error = $this->upload->display_errors();
+            $this->fb(["statusCode" => 500, "res" => $error]);
+        }
+        
+        // Jika upload berhasil
+        $file_data = $this->upload->data();
+        $file_path = $file_data['full_path'];
+        // Load PHPExcel
+        $objPHPExcel = IOFactory::load($file_path);
+
+        // Membaca sheet pertama
+        $sheet = $objPHPExcel->getSheet(0);
+        $highestRow = $sheet->getHighestRow();
+
+        if($clear == "yes"){
+            $this->model->delete("master_juklak","id !=");
+        }
+
+        $data_submit = [];
+        for ($i=4; $i <= $highestRow; $i++) { 
+            $part_no = str_replace("#N/A","",$sheet->getCell('D'.$i)->getValue());
+            if(empty($part_no)){
+                continue;
+            }
+
+            $job_no = str_replace("#N/A","",$sheet->getCell('C'.$i)->getValue());
+            $sap_part_no = str_replace("#N/A","",$sheet->getCell('E'.$i)->getValue());
+            $part_name = str_replace("#N/A","",$sheet->getCell('F'.$i)->getValue());
+            $routing = str_replace("#N/A","",$sheet->getCell('G'.$i)->getValue());
+            $supplier = str_replace("#N/A","",$sheet->getCell('H'.$i)->getValue());
+            $s = str_replace("#N/A","",$sheet->getCell('I'.$i)->getValue());
+            $ratio = str_replace("#N/A","",$sheet->getCell('J'.$i)->getValue());
+            $is_bom = str_replace("#N/A","",$sheet->getCell('K'.$i)->getValue());
+            $model = str_replace("#N/A","",$sheet->getCell('L'.$i)->getValue());
+
+            $data_submit[$part_no] = [
+                "job_no" => $job_no,
+                "part_no" => $part_no,
+                "sap_part_no" => $sap_part_no,
+                "part_name" => $part_name,
+                "routing" => $routing,
+                "supplier" => $supplier,
+                "s" => $s,
+                "ratio" => $ratio,
+                "is_bom" => $is_bom,
+                "model" => $model,
+            ];
+        }
+
+        if(empty($data_submit)){
+            $fb = ["statusCode" => 500, "res" => "Data excel kosong"];
+            $this->fb($fb);
+        }
+
+        $this->model->insert_batch("master_juklak",$data_submit);
+
+        $fb = ["statusCode" => 200, "res" => "Upload success"];
+        unlink($file_path);
+        $this->fb($fb);
+    }
+
+    public function upload_wip()
+    {
+        $config['upload_path']   = './uploads/';
+        $config['allowed_types'] = 'xls|xlsx';
+
+        $this->upload->initialize($config);
+        if (!$this->upload->do_upload('upload-wip')) {
+            // Jika upload gagal, tampilkan error
+            $error = $this->upload->display_errors();
+            $this->fb(["statusCode" => 500, "res" => $error]);
+        }
+        
+        // Jika upload berhasil
+        $file_data = $this->upload->data();
+        $file_path = $file_data['full_path'];
+        // Load PHPExcel
+        $objPHPExcel = IOFactory::load($file_path);
+
+        // Membaca sheet pertama
+        $sheet = $objPHPExcel->getSheet(0);
+        $highestRow = $sheet->getHighestRow();
+
+        $plant = "D105";
+        $data_excel = [];
+        $this->model->delete("data_wip","id !=");
+        for ($i=2; $i <= $highestRow; $i++) { 
+            $sap_part_no = $sheet->getCell('A'.$i)->getValue();
+            if(empty($sap_part_no)){
+                continue;
+            }
+
+            $part_name = htmlentities($sheet->getCell('B'.$i)->getValue());
+            $qty = $sheet->getCell('C'.$i)->getValue();
+            $last_vin = $sheet->getCell('D'.$i)->getValue();
+
+            $data_excel[] = [
+                "sap_part_no" => $sap_part_no,
+                "part_name" => $part_name,
+                "plant" => $plant,
+                "wip_qty" => $qty,
+                "last_vin" => $last_vin,
+            ];
+        }
+
+        if(empty($data_excel)){
+            $fb = ["statusCode" => 500, "res" => "Data excel kosong"];
+            $this->fb($fb);
+        }
+
+        
+        $this->model->insert_batch("data_wip",$data_excel);
+
+        $fb = ["statusCode" => 200, "res" => "Upload success", "file_path" => $file_path];
+        unlink($file_path);
+        $this->fb($fb);
+    }
+	
+	public function fetch_data()
+	{
+		$cookie = $this->session->userdata('ci3_cookie');
+		if (!$cookie) {
+			$this->fb(["statusCode" => 500, "res" => "Belum login ke remote server. Silakan login dulu."]);
+		}
+
+		$shop = $this->input->get("shop");
+		if(empty($shop)){
+			$this->fb(["statusCode" => 500, "res" => "Shop tidak boleh kosong"]);
+		}
+
+		$group = $this->input->get("group") ?? "ALL";
+		$url = URL_GET_DATA;
+
+		$post_data = http_build_query([
+			'shop'   => $shop,
+			'group'  => $group,
+			'submit' => 'Show Final Data'
+		]);
+
+		$getSloc = $this->model->gd("master_sloc","sloc","dept = '$shop'","row");
+		if(empty($getSloc)){
+			$this->fb(["statusCode" => 500, $shop." belum memiliki code Sloc silahkan tambahkan terlebih dahulu di menu Master Sloc"]);
+		}
+		$sloc = $getSloc->sloc;
+
+		$phpsessid   = $cookie["PHPSESSID"];
+		$ci_session  = $cookie["ci_session"]; // hasil login remote
+		$cookie_header = "PHPSESSID={$phpsessid}; ci_session={$ci_session}";
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, [
+			'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+			'Accept-Encoding: gzip, deflate',
+			'Accept-Language: id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+			'Cache-Control: max-age=0',
+			'Connection: keep-alive',
+			'Content-Type: application/x-www-form-urlencoded',
+			'Origin: http://10.59.114.111:8080',
+			'Referer: http://10.59.114.111:8080/stoweb/index.php/entrylist/dataFinal',
+			'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+			'Cookie: ' . $cookie_header,
+		]);
+		curl_setopt($ch, CURLOPT_ENCODING, '');
+
+		$response = curl_exec($ch);
+		curl_close($ch);
+
+		if ($response === false) {
+			$error_msg = curl_error($ch);         // ambil pesan error
+			$error_code = curl_errno($ch);        // ambil kode error
+			curl_close($ch);                      // tutup curl
+
+			show_error("Gagal ambil data dari target. CURL Error $error_code: $error_msg");
+		}
+
+		// Ambil <table id="example1">
+		$dom = new DOMDocument();
+		libxml_use_internal_errors(true);
+		$dom->loadHTML($response);
+		libxml_clear_errors();
+
+		$table = $dom->getElementById('example1');
+
+		if (!$table) {
+			show_error("Table dengan id='example1' tidak ditemukan.");
+		}
+		
+		$rows = $table->getElementsByTagName('tr');
+		$data = [];
+
+		//DELETE DATA ALL BY SHOP ID
+		$this->model->delete('data_actual','shop_id = "'.$shop.'"');
+		
+		foreach ($rows as $row) {
+			$cells = $row->getElementsByTagName('td');
+
+			// Kalau gak ada <td>, skip (mungkin header)
+			if ($cells->length == 0) continue;
+
+			// Ambil data berdasarkan index kolom
+			$part_no   = trim($cells->item(2)->textContent ?? '');
+			$part_name = trim($cells->item(4)->textContent ?? '');
+			$pcs_ok    = trim($cells->item(16)->textContent ?? '');
+			$pcs_ng    = trim($cells->item(17)->textContent ?? '');
+			$pcs_total = trim($cells->item(18)->textContent ?? '');
+
+			if($pcs_ok <= 0 && $pcs_ng <= 0 && $pcs_total <= 0){
+				continue;
+			}
+
+			$sap_part_no = $part_no;
+			if($sloc == "D100"){
+				$getSapAktif = $this->model->gd("master_juklak","sap_part_no","part_no = '$part_no'","row");
+				$sap_part_no = empty($getSapAktif->sap_part_no) ? $part_no : $getSapAktif->sap_part_no;
+			}
+			$data[] = [
+				'sap_part_no'   => $sap_part_no,
+				'part_name' 	=> $part_name,
+				'plant' 		=> 'D105',
+				'shop_id' 		=> $shop,
+				'act_qty' 		=> $pcs_total,
+				'sloc'			=> $sloc,
+			];
+		}
+
+		$this->model->insert_batch('data_actual',$data);
+		$this->fb(["statusCode" => 200, "res" => "Syncronize ".number_format(count($data),0,"",".")." data berhasil"]);
+		// header('Content-Type: application/json');
+		// echo json_encode($data);
+	}
+
+	public function load_data()
+	{
+		$query = $this->db->query("
+			SELECT 
+				sap_part_no,
+				part_name,
+				plant,
+				sloc,
+				price,
+				sap_qty,
+				actual_qty,
+				total_price_sap,
+				total_price_act,
+				selisih_qty,
+				selisih_harga
+			FROM (
+				-- Part yang ada di data_sap
+				SELECT 
+					ds.sap_part_no,
+					MAX(ds.part_name) AS part_name,
+					MAX(ds.plant) AS plant,
+					COALESCE(MAX(ds.sloc), MAX(da.sloc)) AS sloc,  -- ambil dari ds.sloc dulu, kalau ga ada ambil da.sloc
+					MAX(ds.price) AS price,
+					SUM(ds.sap_qty) AS sap_qty,
+					IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0) AS actual_qty,
+					SUM(ds.sap_qty * ds.price) AS total_price_sap,
+					MAX(ds.price) * (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS total_price_act,
+					SUM(ds.sap_qty) - (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS selisih_qty,
+					SUM(ds.sap_qty * ds.price) - MAX(ds.price) * (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS selisih_harga
+				FROM data_sap ds
+				LEFT JOIN (
+					SELECT sap_part_no, sloc, SUM(act_qty) AS total_act_qty
+					FROM data_actual
+					GROUP BY sap_part_no, sloc
+				) da ON da.sap_part_no = ds.sap_part_no
+				LEFT JOIN (
+					SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
+					FROM data_wip
+					GROUP BY sap_part_no
+				) dw ON dw.sap_part_no = ds.sap_part_no
+				GROUP BY ds.sap_part_no
+
+				UNION ALL
+
+				-- Part yang cuma ada di data_actual (gak ada di data_sap)
+				SELECT 
+					da.sap_part_no,
+					MAX(da.part_name),
+					MAX(da.plant),
+					MAX(da.sloc), -- ambil sloc dari data_actual
+					0,
+					0,
+					SUM(da.act_qty) - IFNULL(SUM(dw.wip_qty), 0),
+					0,
+					0,
+					-(SUM(da.act_qty) - IFNULL(SUM(dw.wip_qty), 0)),
+					0
+				FROM data_actual da
+				LEFT JOIN data_sap ds ON ds.sap_part_no = da.sap_part_no
+				LEFT JOIN (
+					SELECT sap_part_no, SUM(wip_qty) AS wip_qty
+					FROM data_wip
+					GROUP BY sap_part_no
+				) dw ON dw.sap_part_no = da.sap_part_no
+				WHERE ds.sap_part_no IS NULL
+				GROUP BY da.sap_part_no
+			) AS result
+			ORDER BY sap_part_no;
+		");
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['price'] = isset($row['price']) ? (int)round($row['price'], 2) : '0.00';
+            $row['sap_qty'] = (int)$row['sap_qty'];
+            $row['actual_qty'] = (int)$row['actual_qty'];
+            $row['selisih_qty'] = (int)$row['selisih_qty'];
+            $row['total_price_act'] = (int)round($row['total_price_act'], 2);
+            $row['total_price_sap'] = (int)round($row['total_price_sap'], 2);
+            $row['selisih_harga'] = (int)round($row['selisih_harga'], 2);
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_wip()
+	{
+		$query = $this->db->query("
+			SELECT 
+				sap_part_no,
+				part_name,
+				plant,
+				SUM(wip_qty) AS wip_qty,
+				last_vin
+			FROM data_wip
+			GROUP BY sap_part_no
+			ORDER BY sap_part_no;
+		");
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['wip_qty'] = (int)$row['wip_qty'];
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_juklak()
+	{
+		$query = $this->db->query("
+			SELECT 
+				part_no,
+				sap_part_no,
+				job_no,
+				part_name,
+				routing,
+				supplier,
+				ratio,
+				model
+			FROM master_juklak
+			ORDER BY sap_part_no;
+		");
+
+		$result = $query->result_array();
+
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_sloc()
+	{
+		$query = $this->db->query("
+			SELECT 
+				dept,
+				sloc,
+				label
+			FROM master_sloc
+			ORDER BY dept;
+		");
+
+		$result = $query->result_array();
+
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_actual()
+	{
+		$query = $this->db->query("
+			SELECT 
+				da.sap_part_no,
+				da.part_name,
+				da.plant,
+				da.shop_id,
+				da.sloc,
+				da.act_qty
+			FROM data_actual da
+			ORDER BY sap_part_no;
+		");
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['act_qty'] = (int)$row['act_qty'];
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_mb52()
+	{
+		$query = $this->db->query("
+			SELECT 
+				sap_part_no,
+				part_name,
+				plant,
+				sloc,
+				base_unit,
+				sap_qty,
+				price,
+				(sap_qty*price) as total_price
+			FROM data_sap
+			ORDER BY sap_part_no;
+		");
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['sap_qty'] = (int)$row['sap_qty'];
+            $row['price'] = (int)round($row['price']);
+            $row['total_price'] = (int)round($row['total_price']);
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+
+	public function update_sloc()
+	{
+		$this->form_validation
+			->set_rules("method","Method","required|trim|in_list[add,update]")
+			->set_rules("id_dept","Departement","required|trim")
+			->set_rules("input-sloc","Sloc","required|trim");
+		if($this->form_validation->run() === FALSE){
+			$this->fb(["statusCode" => 500, "res" => validation_errors()]);
+		}
+
+		$method = $this->input->post("method");
+		$dept = $this->input->post("id_dept");
+		$sloc = $this->input->post("input-sloc");
+
+		$data_shop = LIST_SHOP;
+
+		$data_submit = [
+			"dept" => $dept,
+			"sloc" => $sloc,
+			"label" => $data_shop[$dept],
+		];
+		if($method == "add"){
+			//CHECK DOUBLE DATA
+			$validasi = $this->model->gd("master_sloc","dept","dept = '$dept'","row");
+			if(!empty($validasi)){
+				$this->fb(["statusCode" => 500, "res" => "Dept sudah ada"]);
+			}
+
+			$this->model->insert("master_sloc",$data_submit);
+		}else{
+			$this->model->update("master_sloc","dept = '$dept'",$data_submit);
+		}
+		
+		$this->fb(["statusCode" => 200]);
+	}
+
+	public function delete_sloc()
+	{
+		$this->form_validation->set_rules("dept","Departement","required|trim");
+		if($this->form_validation->run() === FALSE){
+			$this->fb(["statusCode" => 500, "res" => validation_errors()]);
+		}
+
+		$dept = $this->input->post("dept");
+		
+		$this->model->delete("master_sloc","dept = '$dept'");
+		
+		$this->fb(["statusCode" => 200]);
+	}
+	
+	public function remote_login()
+	{
+		$url = URL_LOGIN_GET_DATA; // Ini URL Flask Python lu
+
+		$ch = curl_init($url);
+
+		curl_setopt_array($ch, [
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_HEADER => false,
+			CURLOPT_USERAGENT => $_SERVER['HTTP_USER_AGENT'],
+			CURLOPT_TIMEOUT => 10
+		]);
+
+		$response = curl_exec($ch);
+
+		if ($response === false) {
+			$err = curl_error($ch);
+			curl_close($ch);
+			$this->fb(["statusCode" => 500, "res" => "Disconnect", "message" => "Curl error ke Python: " . $err]);
+		}
+
+		curl_close($ch);
+
+		$data = json_decode($response, true);
+		if (!isset($data['cookies']['ci_session'])) {
+			$this->fb(["statusCode" => 500, "res" => "Disconnect", "message" => "Gagal ambil session CI3 dari Python."]);
+		}
+
+		// Simpan ke session lokal
+		$this->session->set_userdata('ci3_cookie', $data['cookies']);
+		$this->session->set_userdata('remote_session_raw', $data['cookies']); // Optional
+
+		$this->fb(["statusCode" => 200, "res" => "Connected", "cookie" => $data['cookies']]);
+
+		// Optional: print hasil cookie-nya
+		// echo "<pre>"; print_r($data['cookies']); echo "</pre>";
+	}
+
+	function check_remote()
+	{
+		$ci3_cookie = $this->session->userdata("ci3_cookie");
+		if(!empty($ci3_cookie)){
+			$this->fb(["statusCode" => 200, "res" => "Connected", "cookie" => $ci3_cookie]);
+		}else{
+			$this->fb(["statusCode" => 500, "res" => "Disconnect", "cookie" => $ci3_cookie]);
+		}
+	}
 }
