@@ -6,7 +6,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form action="<?= base_url("upload_wip") ?>" method="post" id="form-upload-wip">
+                <form action="<?= base_url("upload_wip") ?>" method="post" id="form-upload-wip" data-page="wip">
                     <div class="input-group">
                         <input class="form-control" type="file" id="upload-wip" name="upload-wip" accept=".xlsx,.xls">
                     </div>

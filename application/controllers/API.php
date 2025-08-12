@@ -193,6 +193,71 @@ class API extends MY_Controller {
         unlink($file_path);
         $this->fb($fb);
     }
+
+    public function upload_delaytransaction()
+    {
+        $config['upload_path']   = './uploads/';
+        $config['allowed_types'] = 'xls|xlsx';
+
+        $this->upload->initialize($config);
+        if (!$this->upload->do_upload('upload-delaytransaction')) {
+            // Jika upload gagal, tampilkan error
+            $error = $this->upload->display_errors();
+            $this->fb(["statusCode" => 500, "res" => $error]);
+        }
+        
+        // Jika upload berhasil
+        $file_data = $this->upload->data();
+        $file_path = $file_data['full_path'];
+        // Load PHPExcel
+        $objPHPExcel = IOFactory::load($file_path);
+
+        // Membaca sheet pertama
+        $sheet = $objPHPExcel->getSheet(0);
+        $highestRow = $sheet->getHighestRow();
+
+        $plant = "D105";
+        $data_excel = [];
+        $this->model->delete("data_delaytransaction","id !=");
+        for ($i=2; $i <= $highestRow; $i++) { 
+            $part_number = $sheet->getCell('A'.$i)->getValue();
+			$qty_problem = $sheet->getCell('B'.$i)->getValue();
+			$price_part = $sheet->getCell('C'.$i)->getValue();
+			$problem = $sheet->getCell('E'.$i)->getValue();
+			$pic = $sheet->getCell('F'.$i)->getValue();
+			$sloc = $sheet->getCell('G'.$i)->getValue();
+			$status = $sheet->getCell('H'.$i)->getValue();
+            if(empty($part_number) || empty($qty_problem) || empty($price_part) || empty($sloc) || empty($status)){
+                continue;
+            }
+
+			if(!in_array($status,["IN","OUT"])){
+				continue;
+			}
+
+            $data_excel[] = [
+                "part_number" => $part_number,
+                "qty_problem" => $qty_problem,
+                "price_part" => $price_part,
+                "problem" => $problem,
+                "pic" => $pic,
+                "sloc" => $sloc,
+                "status" => $status,
+            ];
+        }
+
+        if(empty($data_excel)){
+            $fb = ["statusCode" => 500, "res" => "Data excel kosong"];
+            $this->fb($fb);
+        }
+
+        
+        $this->model->insert_batch("data_delaytransaction",$data_excel);
+
+        $fb = ["statusCode" => 200, "res" => "Upload success", "file_path" => $file_path];
+        unlink($file_path);
+        $this->fb($fb);
+    }
 	
 	public function fetch_data()
 	{
@@ -311,6 +376,200 @@ class API extends MY_Controller {
 
 	public function load_data()
 	{
+		$sql = "
+		SELECT 
+			sap_part_no,
+			part_name,
+			plant,
+			sloc,
+			price,
+			sap_qty,
+			actual_qty,
+			total_price_sap,
+			total_price_act,
+			selisih_qty,
+			selisih_harga
+		FROM (
+			-- Part yang ada di data_sap (utama)
+			SELECT 
+				ds.sap_part_no,
+				ds.part_name,
+				ds.plant,
+				COALESCE(ds.sloc, da.sloc, dt.sloc) AS sloc,
+				COALESCE(ds.price, 0) AS price,
+				(
+					ds.total_sap_qty
+					+ IFNULL(dt.total_in_qty, 0)
+					- IFNULL(dt.total_out_qty, 0)
+				) AS sap_qty,
+				(
+					IFNULL(da.total_act_qty, 0)
+					- IFNULL(dw.total_wip_qty, 0)
+				) AS actual_qty,
+				(
+					(
+						ds.total_sap_qty
+						+ IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					) * COALESCE(ds.price, 0)
+				) AS total_price_sap,
+				(
+					COALESCE(ds.price, 0)
+					* (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS total_price_act,
+				(
+					(
+						ds.total_sap_qty
+						+ IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					)
+					- (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS selisih_qty,
+				(
+					(
+						(
+							ds.total_sap_qty
+							+ IFNULL(dt.total_in_qty, 0)
+							- IFNULL(dt.total_out_qty, 0)
+						) * COALESCE(ds.price, 0)
+					)
+					- (
+						COALESCE(ds.price, 0)
+						* (
+							IFNULL(da.total_act_qty, 0)
+							- IFNULL(dw.total_wip_qty, 0)
+						)
+					)
+				) AS selisih_harga
+			FROM (
+				-- aggregate data_sap per part
+				SELECT 
+					sap_part_no,
+					MAX(part_name) AS part_name,
+					MAX(plant) AS plant,
+					MAX(sloc) AS sloc,
+					MAX(price) AS price,
+					SUM(sap_qty) AS total_sap_qty
+				FROM data_sap
+				GROUP BY sap_part_no
+			) ds
+			LEFT JOIN (
+				-- aggregate data_actual per part
+				SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(sloc) AS sloc
+				FROM data_actual
+				GROUP BY sap_part_no
+			) da ON da.sap_part_no = ds.sap_part_no
+			LEFT JOIN (
+				-- aggregate delaytransaction per part (IN/OUT)
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt ON dt.sap_part_no = ds.sap_part_no
+			LEFT JOIN (
+				-- aggregate wip per part
+				SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
+				FROM data_wip
+				GROUP BY sap_part_no
+			) dw ON dw.sap_part_no = ds.sap_part_no
+
+			UNION ALL
+
+			-- Part yang cuma ada di data_actual (gak ada di data_sap) — tapi bisa punya delaytransaction
+			SELECT 
+				COALESCE(da.sap_part_no, dt.sap_part_no) AS sap_part_no,
+				COALESCE(da.part_name, '') AS part_name,
+				COALESCE(da.plant, '') AS plant,
+				COALESCE(da.sloc, dt.sloc) AS sloc,
+				0 AS price,
+				(
+					IFNULL(dt.total_in_qty, 0)
+					- IFNULL(dt.total_out_qty, 0)
+				) AS sap_qty,
+				(
+					IFNULL(da.total_act_qty, 0)
+					- IFNULL(dw.total_wip_qty, 0)
+				) AS actual_qty,
+				0 AS total_price_sap,
+				0 AS total_price_act,
+				(
+					(
+						IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					)
+					- (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS selisih_qty,
+				0 AS selisih_harga
+			FROM (
+				SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(part_name) AS part_name, MAX(plant) AS plant, MAX(sloc) AS sloc
+				FROM data_actual
+				GROUP BY sap_part_no
+			) da
+			LEFT JOIN (
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt ON dt.sap_part_no = da.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
+				FROM data_wip
+				GROUP BY sap_part_no
+			) dw ON dw.sap_part_no = da.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+			) ds_check ON ds_check.sap_part_no = da.sap_part_no
+			WHERE ds_check.sap_part_no IS NULL
+			GROUP BY COALESCE(da.sap_part_no, dt.sap_part_no)
+
+			UNION ALL
+
+			-- Part yang cuma ada di delaytransaction (gak ada di data_sap & data_actual)
+			SELECT
+				dt.sap_part_no AS sap_part_no,
+				'' AS part_name,
+				'' AS plant,
+				dt.sloc AS sloc,
+				0 AS price,
+				(dt.total_in_qty - dt.total_out_qty) AS sap_qty,
+				0 AS actual_qty,
+				0 AS total_price_sap,
+				0 AS total_price_act,
+				(dt.total_in_qty - dt.total_out_qty) AS selisih_qty,
+				0 AS selisih_harga
+			FROM (
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+			) ds_check ON ds_check.sap_part_no = dt.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_actual GROUP BY sap_part_no
+			) da_check ON da_check.sap_part_no = dt.sap_part_no
+			WHERE ds_check.sap_part_no IS NULL AND da_check.sap_part_no IS NULL
+		) AS result
+		ORDER BY sap_part_no;";
 		$query = $this->db->query("
 			SELECT 
 				sap_part_no,
@@ -378,6 +637,7 @@ class API extends MY_Controller {
 			) AS result
 			ORDER BY sap_part_no;
 		");
+		$query = $this->db->query($sql);
 
 		$result = $query->result_array();
         foreach ($result as &$row) {
@@ -502,6 +762,33 @@ class API extends MY_Controller {
             $row['sap_qty'] = (int)$row['sap_qty'];
             $row['price'] = (int)round($row['price']);
             $row['total_price'] = (int)round($row['total_price']);
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+	
+	public function load_data_delaytransaction()
+	{
+		$query = $this->db->query("
+			SELECT 
+				part_number,
+				qty_problem,
+				price_part,
+				(qty_problem*price_part) as total_ammount,
+				problem,
+				pic,
+				sloc,
+				status
+			FROM data_delaytransaction
+			ORDER BY part_number;
+		");
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['qty_problem'] = (int)$row['qty_problem'];
+            $row['price_part'] = (int)round($row['price_part']);
+            $row['total_ammount'] = (int)round($row['total_ammount']);
         }
 		echo json_encode([
 			"data" => $result

@@ -2,6 +2,10 @@
     $("#btn-upload-mb52").click(function() {
         $("#form-upload-mb52").trigger("submit");
     });
+
+    $("#btn-upload-delaytransaction").click(function() {
+        $("#form-upload-delaytransaction").trigger("submit");
+    });
     
     $('#btn-upload-wip').click(function () {
         $("#form-upload-wip").trigger("submit");
@@ -18,8 +22,9 @@
         $("#form-upload-juklak").trigger("submit");
     });
 
-    $('#form-upload-wip, #form-upload-mb52, #form-upload-juklak').on('submit', function(e) {
+    $('#form-upload-wip, #form-upload-mb52, #form-upload-juklak, #form-upload-delaytransaction').on('submit', function(e) {
         const idform = e.target.id;
+        const page = e.target.dataset.page;
         e.preventDefault(); // Hindari form submit standar
 
         let formData = new FormData(this);
@@ -28,7 +33,7 @@
             formData.append("clear",clear)
         }
 
-        const url = base_url + (idform == "form-upload-wip" ? "upload_wip" : (idform == "form-upload-mb52" ? "upload_mb52" : "upload_juklak"));
+		const url = `upload_${page}`;
 
         $.ajax({
             url: url, // ganti sesuai endpoint backend kamu
@@ -49,16 +54,8 @@
                         icon:"success"
                     });
 
-					if(idform == "form-upload-wip"){
-						$('#modal-upload-wip').modal('hide');
-						load_wip();
-					}else if(idform == "form-upload-mb52"){
-						$('#modal-upload-mb52').modal('hide');
-						load_mb52();
-					}else if(idform == "form-upload-juklak"){
-						$('#modal-upload-juklak').modal('hide');
-						load_juklak();
-					}
+					$(`#modal-upload-${page}`).modal('hide');
+					window[`load_${page}`]();
                 }else{
 					swal.fire('Error','Upload gagal: ' + res.res,'error');
 				}
@@ -301,7 +298,6 @@
 			});
 		}
 	}
-	load_reconcile();
 
 	let tableWip = null;
 	function load_wip() {
@@ -448,5 +444,71 @@
 			});
 		}
 	}
+	
+	let tabledelaytransaction = null;
+	function load_delaytransaction() {
+		if (tabledelaytransaction) {
+			tabledelaytransaction.ajax.reload(); // reload data
+		} else {
+			tabledelaytransaction = $('#table-delaytransaction').DataTable({
+				processing: true,
+				ajax: {
+					url: '<?= base_url("load_data_delaytransaction") ?>',
+					dataSrc: 'data'
+				},
+				lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+				pageLength: 25,
+				columns: [
+					{ data: 'part_number' },
+					{ data: 'qty_problem', render: renderWithSort },
+					{ data: 'price_part', render: renderWithSort },
+					{ data: 'total_ammount', render: renderWithSort },
+					{ data: 'problem' },
+					{ data: 'pic' },
+					{ data: 'sloc' },
+					{ data: 'status' },
+				],
+				columnDefs: [
+					{
+						targets: [0,1,2,3,5,6,7], // Kolom ke-4 (0-indexed)
+						className: 'text-center'
+					}
+				]
+			});
+		}
+	}
 
+	$(document).ready(function () {
+		afterLoad();
+
+		// Event listener untuk klik tab
+		$(".nav-link").on("click", function () {
+			const page = $(this).data("page");
+			sessionStorage.setItem("page", page);
+			callPageLoader(page);
+		});
+	});
+
+	function afterLoad() {
+		// Ambil page terakhir, default "reconcile"
+		const page = sessionStorage.getItem('page') ?? "reconcile";
+
+		// Set tab active sesuai page
+		$(".nav-link").removeClass("active");
+		$(`#${page}-tab`).addClass("active");
+		$(`.tab-pane`).removeClass("show active");
+		$(`#${page}`).addClass("show active");
+
+		// Panggil loader sesuai page
+		callPageLoader(page);
+	}
+
+	function callPageLoader(page) {
+		// Pastikan fungsi ada sebelum dipanggil
+		if (typeof window["load_" + page] === "function") {
+			window["load_" + page]();
+		} else {
+			console.warn(`Function load_${page}() belum didefinisikan`);
+		}
+	}
 </script>

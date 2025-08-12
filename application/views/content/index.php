@@ -33,26 +33,29 @@
 							<div class="card-body">
 								<ul class="nav nav-tabs" id="myTab" role="tablist">
 									<li class="nav-item" role="presentation">
-										<button class="nav-link active" id="reconcile-tab" data-bs-toggle="tab" data-bs-target="#reconcile" type="button" role="tab" aria-controls="reconcile" aria-selected="true" onclick="load_reconcile()">Reconcile</button>
+										<button class="nav-link" id="reconcile-tab" data-bs-toggle="tab" data-bs-target="#reconcile" type="button" role="tab" aria-controls="reconcile" aria-selected="true" data-page="reconcile">Reconcile</button>
 									</li>
 									<li class="nav-item" role="presentation">
-										<button class="nav-link" id="wip-tab" data-bs-toggle="tab" data-bs-target="#wip" type="button" role="tab" aria-controls="wip" aria-selected="false" onclick="load_wip()">Data WIP</button>
+										<button class="nav-link" id="wip-tab" data-bs-toggle="tab" data-bs-target="#wip" type="button" role="tab" aria-controls="wip" aria-selected="false" data-page="wip">Data WIP</button>
 									</li>
 									<li class="nav-item" role="presentation">
-										<button class="nav-link" id="mb52-tab" data-bs-toggle="tab" data-bs-target="#mb52" type="button" role="tab" aria-controls="mb52" aria-selected="false" onclick="load_mb52()">Data MB52</button>
+										<button class="nav-link" id="mb52-tab" data-bs-toggle="tab" data-bs-target="#mb52" type="button" role="tab" aria-controls="mb52" aria-selected="false" data-page="mb52">Data MB52</button>
 									</li>
 									<li class="nav-item" role="presentation">
-										<button class="nav-link" id="actual-tab" data-bs-toggle="tab" data-bs-target="#actual" type="button" role="tab" aria-controls="actual" aria-selected="false" onclick="load_actual()">Data Actual</button>
+										<button class="nav-link" id="actual-tab" data-bs-toggle="tab" data-bs-target="#actual" type="button" role="tab" aria-controls="actual" aria-selected="false" data-page="actual">Data Actual</button>
 									</li>
 									<li class="nav-item" role="presentation">
-										<button class="nav-link" id="juklak-tab" data-bs-toggle="tab" data-bs-target="#juklak" type="button" role="tab" aria-controls="juklak" aria-selected="false" onclick="load_juklak()">Master Juklak</button>
+										<button class="nav-link" id="delaytransaction-tab" data-bs-toggle="tab" data-bs-target="#delaytransaction" type="button" role="tab" aria-controls="delaytransaction" aria-selected="false" data-page="delaytransaction">Delay Transaction</button>
 									</li>
 									<li class="nav-item" role="presentation">
-										<button class="nav-link" id="sloc-tab" data-bs-toggle="tab" data-bs-target="#sloc" type="button" role="tab" aria-controls="sloc" aria-selected="false" onclick="load_sloc()">Master Sloc</button>
+										<button class="nav-link" id="juklak-tab" data-bs-toggle="tab" data-bs-target="#juklak" type="button" role="tab" aria-controls="juklak" aria-selected="false" data-page="juklak">Master Juklak</button>
+									</li>
+									<li class="nav-item" role="presentation">
+										<button class="nav-link" id="sloc-tab" data-bs-toggle="tab" data-bs-target="#sloc" type="button" role="tab" aria-controls="sloc" aria-selected="false" data-page="sloc">Master Sloc</button>
 									</li>
 								</ul>
 								<div class="tab-content" id="myTabContent">
-									<div class="tab-pane fade show active" id="reconcile" role="tabpanel" aria-labelledby="reconcile-tab">
+									<div class="tab-pane fade" id="reconcile" role="tabpanel" aria-labelledby="reconcile-tab">
 										<div class="table-responsive" style="overflow: auto; height: calc(100vh - 20vh);">
 											<table id="table-reconcile" class="table table-bordered table-striped table-hover">
 												<thead>
@@ -192,6 +195,27 @@
 											</table>
 										</div>
 									</div>
+									<div class="tab-pane fade" id="delaytransaction" role="tabpanel" aria-labelledby="delaytransaction-tab">
+                        				<div class="mt-3 mb-2 w-100">
+                        					<button class="btn btn-sm btn-light border border-dark" data-bs-toggle="modal" data-bs-target="#modal-upload-delaytransaction"><img src="<?=base_url("assets/image/icon-upload.svg"); ?>">Upload Delay Transaction</button>
+										</div>
+										<div class="table-responsive" style="overflow: auto; height: calc(100vh - 20vh);">
+											<table id="table-delaytransaction" class="table table-bordered table-striped table-hover" style="width: 100%">
+												<thead>
+													<tr>
+														<th>Part No</th>
+														<th>Qty Problem</th>
+														<th>Price/Part</th>
+														<th>Total Amount</th>
+														<th>Problem</th>
+														<th>PIC</th>
+														<th>SLOC</th>
+														<th>Status</th>
+													</tr>
+												</thead>
+											</table>
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -205,3 +229,4 @@
 <?php $this->load->view("component/formuploadmb52"); ?>
 <?php $this->load->view("component/formuploadjuklak"); ?>
 <?php $this->load->view("component/forminputsloc"); ?>
+<?php $this->load->view("component/formuploaddelaytransaction"); ?>

@@ -6,7 +6,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form action="<?= base_url("upload_juklak") ?>" method="post" id="form-upload-juklak" data-clear="no">
+                <form action="<?= base_url("upload_juklak") ?>" method="post" id="form-upload-juklak" data-clear="no" data-page="juklak">
                     <div class="input-group">
                         <input class="form-control" type="file" id="upload-juklak" name="upload-juklak" accept=".xlsx,.xls">
                     </div>
