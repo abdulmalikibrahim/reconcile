@@ -478,6 +478,74 @@
 		}
 	}
 
+	let tableReport = null;
+	function load_report() {
+		if (tableReport) {
+			tableReport.ajax.reload(); // reload doang
+		} else {
+			tableReport = $('#table-report').DataTable({
+				processing: true,
+				ajax: {
+					url: '<?= base_url("load_data_report") ?>',
+					dataSrc: 'data'
+				},
+				lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+				pageLength: 25, // default show 25 entries
+				columns: [
+					{ data: 'sloc' },
+					{ data: 'total_sap_qty', render: renderWithSort },
+					{ data: 'total_sap_price', render: renderWithSort },
+					{ data: 'total_actual_qty', render: renderWithSort },
+					{ data: 'total_actual_price', render: renderWithSort },
+					{ data: 'total_diff_qty', render: renderWithSort },
+					{ data: 'total_diff_price', render: renderWithSort },
+					{ data: 'percent' }
+				],
+				columnDefs: [
+					{
+						targets: [0,1,2,3,4,5,6,7], // Kolom ke-4 (0-indexed)
+						className: 'text-center'
+					}
+				]
+			});
+		}
+	}
+
+	let tableReport10 = null;
+	function load_report10() {
+		if (tableReport10) {
+			tableReport10.ajax.reload(); // reload doang
+		} else {
+			tableReport10 = $('#table-report10').DataTable({
+				processing: true,
+				ajax: {
+					url: '<?= base_url("load_top_10") ?>',
+					dataSrc: 'data'
+				},
+				lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+				pageLength: 10, // default show 25 entries
+				columns: [
+					{ data: 'sap_part_no' },
+					{ data: 'part_name' },
+					{ data: 'sloc' },
+					{ data: 'price', render: renderWithSort },
+					{ data: 'sap_qty', render: renderWithSort },
+					{ data: 'total_price_sap', render: renderWithSort },
+					{ data: 'actual_qty', render: renderWithSort },
+					{ data: 'total_price_act', render: renderWithSort },
+					{ data: 'selisih_qty', render: renderWithSort },
+					{ data: 'selisih_harga', render: renderWithSort }
+				],
+				columnDefs: [
+					{
+						targets: [0,2,3,4,5,6,7,8,9], // Kolom ke-4 (0-indexed)
+						className: 'text-center'
+					}
+				]
+			});
+		}
+	}
+
 	$(document).ready(function () {
 		afterLoad();
 

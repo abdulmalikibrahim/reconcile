@@ -86,7 +86,7 @@ defined('EXIT__AUTO_MAX')      OR define('EXIT__AUTO_MAX', 125); // highest auto
 define('SITE_NAME', 'Monren');
 define('URL_GET_DATA','http://10.59.114.111:8080/stoweb/index.php/entrylist/dataFinal');
 // define('URL_LOGIN_GET_DATA','http://10.59.114.111:8080/stoweb/index.php/login/verify');
-define('URL_LOGIN_GET_DATA','http://10.59.194.102:5000/get-cookie');
+define('URL_LOGIN_GET_DATA','http://10.59.194.102:5100/get-cookie');
 define('LIST_SHOP',
 	[
 		'ASY1' => 'Assy 1',

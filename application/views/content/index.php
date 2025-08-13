@@ -53,6 +53,12 @@
 									<li class="nav-item" role="presentation">
 										<button class="nav-link" id="sloc-tab" data-bs-toggle="tab" data-bs-target="#sloc" type="button" role="tab" aria-controls="sloc" aria-selected="false" data-page="sloc">Master Sloc</button>
 									</li>
+									<li class="nav-item" role="presentation">
+										<button class="nav-link" id="report-tab" data-bs-toggle="tab" data-bs-target="#report" type="button" role="tab" aria-controls="report" aria-selected="false" data-page="report">Report</button>
+									</li>
+									<li class="nav-item" role="presentation">
+										<button class="nav-link" id="report10-tab" data-bs-toggle="tab" data-bs-target="#report10" type="button" role="tab" aria-controls="report10" aria-selected="false" data-page="report10">Report Top 10</button>
+									</li>
 								</ul>
 								<div class="tab-content" id="myTabContent">
 									<div class="tab-pane fade" id="reconcile" role="tabpanel" aria-labelledby="reconcile-tab">
@@ -211,6 +217,54 @@
 														<th>PIC</th>
 														<th>SLOC</th>
 														<th>Status</th>
+													</tr>
+												</thead>
+											</table>
+										</div>
+									</div>
+									<div class="tab-pane fade" id="report" role="tabpanel" aria-labelledby="report-tab">
+										<div class="table-responsive" style="overflow: auto; height: calc(100vh - 20vh);">
+											<table id="table-report" class="table table-bordered table-striped table-hover w-100" style="font-size:10pt;">
+												<thead>
+													<tr>
+														<th rowspan="2">SLOC</th>
+														<th colspan="2" class="text-center">SAP</th>
+														<th colspan="2" class="text-center">Actual</th>
+														<th colspan="2" class="text-center">Different</th>
+														<th rowspan="2">Percent</th>
+													</tr>
+													<tr>
+														<th>Qty</th>
+														<th>Total Price</th>
+														<th>Qty</th>
+														<th>Total Price</th>
+														<th>Qty</th>
+														<th>Total Price</th>
+													</tr>
+												</thead>
+											</table>
+										</div>
+									</div>
+									<div class="tab-pane fade" id="report10" role="tabpanel" aria-labelledby="report10-tab">
+										<div class="table-responsive" style="overflow: auto; height: calc(100vh - 20vh);">
+											<table id="table-report10" class="table table-bordered table-striped table-hover w-100" style="font-size:10pt;">
+												<thead>
+													<tr>
+														<th rowspan="2">Part No</th>
+														<th rowspan="2">Part Name</th>
+														<th rowspan="2">SLOC</th>
+														<th rowspan="2">Price/Pcs</th>
+														<th colspan="2">SAP</th>
+														<th colspan="2">Actual</th>
+														<th colspan="2">Different</th>
+													</tr>
+													<tr>
+														<th>Qty</th>
+														<th>Total Price</th>
+														<th>Qty</th>
+														<th>Total Price</th>
+														<th>Qty</th>
+														<th>Total Price</th>
 													</tr>
 												</thead>
 											</table>

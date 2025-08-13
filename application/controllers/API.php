@@ -570,7 +570,36 @@ class API extends MY_Controller {
 			WHERE ds_check.sap_part_no IS NULL AND da_check.sap_part_no IS NULL
 		) AS result
 		ORDER BY sap_part_no;";
-		$query = $this->db->query("
+		$query = $this->db->query($sql);
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['price'] = isset($row['price']) ? (int)round($row['price'], 2) : '0.00';
+            $row['sap_qty'] = (int)$row['sap_qty'];
+            $row['actual_qty'] = (int)$row['actual_qty'];
+            $row['selisih_qty'] = (int)$row['selisih_qty'];
+            $row['total_price_act'] = (int)round($row['total_price_act'], 2);
+            $row['total_price_sap'] = (int)round($row['total_price_sap'], 2);
+            $row['selisih_harga'] = (int)round($row['selisih_harga'], 2);
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+
+	public function load_data_report()
+	{
+		header("content-type: application/json");
+		$sql = "
+		SELECT 
+			sloc,
+			SUM(sap_qty) AS total_sap_qty,
+			SUM(total_price_sap) AS total_sap_price,
+			SUM(actual_qty) AS total_actual_qty,
+			SUM(total_price_act) AS total_actual_price,
+			SUM(selisih_qty) AS total_diff_qty,
+			SUM(selisih_harga) AS total_diff_price
+		FROM (
 			SELECT 
 				sap_part_no,
 				part_name,
@@ -584,59 +613,340 @@ class API extends MY_Controller {
 				selisih_qty,
 				selisih_harga
 			FROM (
-				-- Part yang ada di data_sap
+				-- 🔹 Part yang ada di data_sap (utama)
 				SELECT 
 					ds.sap_part_no,
-					MAX(ds.part_name) AS part_name,
-					MAX(ds.plant) AS plant,
-					COALESCE(MAX(ds.sloc), MAX(da.sloc)) AS sloc,  -- ambil dari ds.sloc dulu, kalau ga ada ambil da.sloc
-					MAX(ds.price) AS price,
-					SUM(ds.sap_qty) AS sap_qty,
-					IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0) AS actual_qty,
-					SUM(ds.sap_qty * ds.price) AS total_price_sap,
-					MAX(ds.price) * (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS total_price_act,
-					SUM(ds.sap_qty) - (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS selisih_qty,
-					SUM(ds.sap_qty * ds.price) - MAX(ds.price) * (IFNULL(SUM(da.total_act_qty), 0) - IFNULL(SUM(dw.total_wip_qty), 0)) AS selisih_harga
-				FROM data_sap ds
+					ds.part_name,
+					ds.plant,
+					COALESCE(ds.sloc, da.sloc, dt.sloc) AS sloc,
+					COALESCE(ds.price, 0) AS price,
+					(ds.total_sap_qty + IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) AS sap_qty,
+					(IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0)) AS actual_qty,
+					((ds.total_sap_qty + IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) * COALESCE(ds.price, 0)) AS total_price_sap,
+					(COALESCE(ds.price, 0) * (IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0))) AS total_price_act,
+					((ds.total_sap_qty + IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) - (IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0))) AS selisih_qty,
+					(((ds.total_sap_qty + IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) * COALESCE(ds.price, 0)) - (COALESCE(ds.price, 0) * (IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0)))) AS selisih_harga
+				FROM (
+					SELECT 
+						sap_part_no,
+						MAX(part_name) AS part_name,
+						MAX(plant) AS plant,
+						MAX(sloc) AS sloc,
+						MAX(price) AS price,
+						SUM(sap_qty) AS total_sap_qty
+					FROM data_sap
+					GROUP BY sap_part_no
+				) ds
 				LEFT JOIN (
-					SELECT sap_part_no, sloc, SUM(act_qty) AS total_act_qty
+					SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(sloc) AS sloc
 					FROM data_actual
-					GROUP BY sap_part_no, sloc
+					GROUP BY sap_part_no
 				) da ON da.sap_part_no = ds.sap_part_no
+				LEFT JOIN (
+					SELECT 
+						part_number AS sap_part_no,
+						SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+						SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+						MAX(sloc) AS sloc
+					FROM data_delaytransaction
+					GROUP BY part_number
+				) dt ON dt.sap_part_no = ds.sap_part_no
 				LEFT JOIN (
 					SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
 					FROM data_wip
 					GROUP BY sap_part_no
 				) dw ON dw.sap_part_no = ds.sap_part_no
-				GROUP BY ds.sap_part_no
 
 				UNION ALL
 
-				-- Part yang cuma ada di data_actual (gak ada di data_sap)
+				-- 🔹 Part yang cuma ada di data_actual
 				SELECT 
-					da.sap_part_no,
-					MAX(da.part_name),
-					MAX(da.plant),
-					MAX(da.sloc), -- ambil sloc dari data_actual
-					0,
-					0,
-					SUM(da.act_qty) - IFNULL(SUM(dw.wip_qty), 0),
-					0,
-					0,
-					-(SUM(da.act_qty) - IFNULL(SUM(dw.wip_qty), 0)),
-					0
-				FROM data_actual da
-				LEFT JOIN data_sap ds ON ds.sap_part_no = da.sap_part_no
+					COALESCE(da.sap_part_no, dt.sap_part_no) AS sap_part_no,
+					COALESCE(da.part_name, '') AS part_name,
+					COALESCE(da.plant, '') AS plant,
+					COALESCE(da.sloc, dt.sloc) AS sloc,
+					0 AS price,
+					(IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) AS sap_qty,
+					(IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0)) AS actual_qty,
+					0 AS total_price_sap,
+					0 AS total_price_act,
+					((IFNULL(dt.total_in_qty, 0) - IFNULL(dt.total_out_qty, 0)) - (IFNULL(da.total_act_qty, 0) - IFNULL(dw.total_wip_qty, 0))) AS selisih_qty,
+					0 AS selisih_harga
+				FROM (
+					SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(part_name) AS part_name, MAX(plant) AS plant, MAX(sloc) AS sloc
+					FROM data_actual
+					GROUP BY sap_part_no
+				) da
 				LEFT JOIN (
-					SELECT sap_part_no, SUM(wip_qty) AS wip_qty
+					SELECT 
+						part_number AS sap_part_no,
+						SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+						SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+						MAX(sloc) AS sloc
+					FROM data_delaytransaction
+					GROUP BY part_number
+				) dt ON dt.sap_part_no = da.sap_part_no
+				LEFT JOIN (
+					SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
 					FROM data_wip
 					GROUP BY sap_part_no
 				) dw ON dw.sap_part_no = da.sap_part_no
-				WHERE ds.sap_part_no IS NULL
-				GROUP BY da.sap_part_no
+				LEFT JOIN (
+					SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+				) ds_check ON ds_check.sap_part_no = da.sap_part_no
+				WHERE ds_check.sap_part_no IS NULL
+				GROUP BY COALESCE(da.sap_part_no, dt.sap_part_no)
+
+				UNION ALL
+
+				-- 🔹 Part yang cuma ada di delaytransaction
+				SELECT
+					dt.sap_part_no AS sap_part_no,
+					'' AS part_name,
+					'' AS plant,
+					dt.sloc AS sloc,
+					0 AS price,
+					(dt.total_in_qty - dt.total_out_qty) AS sap_qty,
+					0 AS actual_qty,
+					0 AS total_price_sap,
+					0 AS total_price_act,
+					(dt.total_in_qty - dt.total_out_qty) AS selisih_qty,
+					0 AS selisih_harga
+				FROM (
+					SELECT 
+						part_number AS sap_part_no,
+						SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+						SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+						MAX(sloc) AS sloc
+					FROM data_delaytransaction
+					GROUP BY part_number
+				) dt
+				LEFT JOIN (
+					SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+				) ds_check ON ds_check.sap_part_no = dt.sap_part_no
+				LEFT JOIN (
+					SELECT sap_part_no FROM data_actual GROUP BY sap_part_no
+				) da_check ON da_check.sap_part_no = dt.sap_part_no
+				WHERE ds_check.sap_part_no IS NULL AND da_check.sap_part_no IS NULL
 			) AS result
-			ORDER BY sap_part_no;
-		");
+		) AS result
+		GROUP BY sloc
+		ORDER BY sloc;";
+		$query = $this->db->query($sql);
+
+		$result = $query->result_array();
+        foreach ($result as &$row) {
+            $row['total_sap_qty'] = (int)$row['total_sap_qty'];
+            $row['total_sap_price'] = (int)round($row['total_sap_price'], 2);
+            $row['total_actual_qty'] = (int)$row['total_actual_qty'];
+            $row['total_actual_price'] = (int)round($row['total_actual_price'], 2);
+            $row['total_diff_qty'] = (int)$row['total_diff_qty'];
+            $row['total_diff_price'] = (int)round($row['total_diff_price'], 2);
+            $row['percent'] = $row["total_sap_price"] > 0 ? (round($row["total_diff_price"]/$row["total_sap_price"], 3)*100)."%" : "0%";
+        }
+		echo json_encode([
+			"data" => $result
+		]);
+	}
+
+	public function load_top_10()
+	{
+		header("content-type: application/json");
+		
+		$sql = "
+		SELECT 
+			sap_part_no,
+			part_name,
+			sloc,
+			price,
+			sap_qty,
+			actual_qty,
+			total_price_sap,
+			total_price_act,
+			selisih_qty,
+			selisih_harga
+		FROM (
+			-- Part yang ada di data_sap (utama)
+			SELECT 
+				ds.sap_part_no,
+				ds.part_name,
+				ds.plant,
+				COALESCE(ds.sloc, da.sloc, dt.sloc) AS sloc,
+				COALESCE(ds.price, 0) AS price,
+				(
+					ds.total_sap_qty
+					+ IFNULL(dt.total_in_qty, 0)
+					- IFNULL(dt.total_out_qty, 0)
+				) AS sap_qty,
+				(
+					IFNULL(da.total_act_qty, 0)
+					- IFNULL(dw.total_wip_qty, 0)
+				) AS actual_qty,
+				(
+					(
+						ds.total_sap_qty
+						+ IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					) * COALESCE(ds.price, 0)
+				) AS total_price_sap,
+				(
+					COALESCE(ds.price, 0)
+					* (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS total_price_act,
+				(
+					(
+						ds.total_sap_qty
+						+ IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					)
+					- (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS selisih_qty,
+				(
+					(
+						(
+							ds.total_sap_qty
+							+ IFNULL(dt.total_in_qty, 0)
+							- IFNULL(dt.total_out_qty, 0)
+						) * COALESCE(ds.price, 0)
+					)
+					- (
+						COALESCE(ds.price, 0)
+						* (
+							IFNULL(da.total_act_qty, 0)
+							- IFNULL(dw.total_wip_qty, 0)
+						)
+					)
+				) AS selisih_harga
+			FROM (
+				-- aggregate data_sap per part
+				SELECT 
+					sap_part_no,
+					MAX(part_name) AS part_name,
+					MAX(plant) AS plant,
+					MAX(sloc) AS sloc,
+					MAX(price) AS price,
+					SUM(sap_qty) AS total_sap_qty
+				FROM data_sap
+				GROUP BY sap_part_no
+			) ds
+			LEFT JOIN (
+				-- aggregate data_actual per part
+				SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(sloc) AS sloc
+				FROM data_actual
+				GROUP BY sap_part_no
+			) da ON da.sap_part_no = ds.sap_part_no
+			LEFT JOIN (
+				-- aggregate delaytransaction per part (IN/OUT)
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt ON dt.sap_part_no = ds.sap_part_no
+			LEFT JOIN (
+				-- aggregate wip per part
+				SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
+				FROM data_wip
+				GROUP BY sap_part_no
+			) dw ON dw.sap_part_no = ds.sap_part_no
+
+			UNION ALL
+
+			-- Part yang cuma ada di data_actual (gak ada di data_sap) — tapi bisa punya delaytransaction
+			SELECT 
+				COALESCE(da.sap_part_no, dt.sap_part_no) AS sap_part_no,
+				COALESCE(da.part_name, '') AS part_name,
+				COALESCE(da.plant, '') AS plant,
+				COALESCE(da.sloc, dt.sloc) AS sloc,
+				0 AS price,
+				(
+					IFNULL(dt.total_in_qty, 0)
+					- IFNULL(dt.total_out_qty, 0)
+				) AS sap_qty,
+				(
+					IFNULL(da.total_act_qty, 0)
+					- IFNULL(dw.total_wip_qty, 0)
+				) AS actual_qty,
+				0 AS total_price_sap,
+				0 AS total_price_act,
+				(
+					(
+						IFNULL(dt.total_in_qty, 0)
+						- IFNULL(dt.total_out_qty, 0)
+					)
+					- (
+						IFNULL(da.total_act_qty, 0)
+						- IFNULL(dw.total_wip_qty, 0)
+					)
+				) AS selisih_qty,
+				0 AS selisih_harga
+			FROM (
+				SELECT sap_part_no, SUM(act_qty) AS total_act_qty, MAX(part_name) AS part_name, MAX(plant) AS plant, MAX(sloc) AS sloc
+				FROM data_actual
+				GROUP BY sap_part_no
+			) da
+			LEFT JOIN (
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt ON dt.sap_part_no = da.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no, SUM(wip_qty) AS total_wip_qty
+				FROM data_wip
+				GROUP BY sap_part_no
+			) dw ON dw.sap_part_no = da.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+			) ds_check ON ds_check.sap_part_no = da.sap_part_no
+			WHERE ds_check.sap_part_no IS NULL
+			GROUP BY COALESCE(da.sap_part_no, dt.sap_part_no)
+
+			UNION ALL
+
+			-- Part yang cuma ada di delaytransaction (gak ada di data_sap & data_actual)
+			SELECT
+				dt.sap_part_no AS sap_part_no,
+				'' AS part_name,
+				'' AS plant,
+				dt.sloc AS sloc,
+				0 AS price,
+				(dt.total_in_qty - dt.total_out_qty) AS sap_qty,
+				0 AS actual_qty,
+				0 AS total_price_sap,
+				0 AS total_price_act,
+				(dt.total_in_qty - dt.total_out_qty) AS selisih_qty,
+				0 AS selisih_harga
+			FROM (
+				SELECT 
+					part_number AS sap_part_no,
+					SUM(CASE WHEN status = 'IN' THEN qty_problem ELSE 0 END) AS total_in_qty,
+					SUM(CASE WHEN status = 'OUT' THEN qty_problem ELSE 0 END) AS total_out_qty,
+					MAX(sloc) AS sloc
+				FROM data_delaytransaction
+				GROUP BY part_number
+			) dt
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_sap GROUP BY sap_part_no
+			) ds_check ON ds_check.sap_part_no = dt.sap_part_no
+			LEFT JOIN (
+				SELECT sap_part_no FROM data_actual GROUP BY sap_part_no
+			) da_check ON da_check.sap_part_no = dt.sap_part_no
+			WHERE ds_check.sap_part_no IS NULL AND da_check.sap_part_no IS NULL
+		) AS result
+		ORDER BY ABS(selisih_harga) DESC
+		LIMIT 10;";
 		$query = $this->db->query($sql);
 
 		$result = $query->result_array();
